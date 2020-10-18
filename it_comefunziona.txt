@@ -1,0 +1,133 @@
+---
+title: come funziona
+ref: howitworks
+lang: it
+---
+Come funziona
+==============
+
+== Obiettivi
+
+  - Scalabilità
+  - Segmentazione della rete
+  - Possibilità di roaming al livello 2
+  - Automagica selezione del gateway con ridondanza, ma permettendo la scelta utente
+  - Compatibilità con la maggioranza degli scenari esistenti
+  - Un singolo firmware per tutto il network (per principianti, per infrastruttura, per professionisti, per un rapido uso, etc.)
+
+== Le basi
+
+L'architettura della rete progettata in LibreMesh è basata su due livelli:
+
+=== Cloud layer 2
+
+The cloud layer 2 usa il protocollo dinamico di instradamento BATMAN-ADV
+
+image::img/bat-adv.png[batmanadv,100,float="left"]
+*******************
+B.A.T.M.A.N. advanced è un protocollo di mesh routing che gira nello spazio del kernel.
+Nonostante la topologia del network sia fatta da multipli nodi e multipli salti, lo astrae in un solo livello 2 di dominio di collisioni.
+Così dalla prospettiva dell'utente l'intera rete mesh sembra una singola LAN.
+Questa arhitettura è davvero interessante per scopi di roaming, così le connessioni TCP e UDP non sono perse neppure quando campbi AP.
+*******************
+
+=== Network layer 3
+
+The whole network layer 3 usa di default il protocollo di instradamento BMX
+
+image::img/bmx7.png[bmx7,100,float="left"]
+*******************
+BMX6 (o la nuova versione BMX7) è un protocollo di routing dimanico con IPv6 nativo, quindi offre caratteristiche innovative e a small
+network overhead (thanks to the distance-vector strategy and a set of optimizations). La versione 7 ha in aggiunta una estenzione di sicurezza dell'instradamento.
+*******************
+
+=== Mischiando i livelli
+
+Di default, tutti i nodi fanno girare entrambi i protocolli (BMX e BAT-ADV), ma su differenti VLAN.footnote:[Virtual isolated LAN, per esempio wlan0.13].
+Così il routing è isolato dal livello MAC.
+
+[NOTE]
+=========================
+La BMX VLAN è sempre la stessa, così tutti i link-layer dei nodi connessi si vedono a vicenda.
+=========================
+
+[NOTE]
+=========================
+La BATADV VLAN dipende dall'identificativo del cloud, che è calcolato di default usando AP SSID.
+=========================
+
+[IMPORTANT]
+=========================
+Così la rete BMX sarà una sola per tutta la mesh, ma la rete BAT-ADV potrebbe essere divisa in parecchi cloud.
+=========================
+
+image::img/network1.png[align="center"]
+
+**Questa configurazione permette di isolare cloud al livello 2**.
+Per esempio un quartiere, un gruppo complesso o un hotspot del network di una strada possono scegliere di isolare la loro LAN dal resto della rete. Però allo stesso tempo, saranno capaci di raggiungere il resto dei nodi usando l'instradamento del livello 3.
+
+D'altra parte, grazie alla segmentazione del livello 3, i problemi comuni che si trovano al livello 2 di bridged network (come le tempeste Broadcast o incubi del DHCP) non disturberanno le corrette operazioni della rete.
+
+[IMPORTANT]
+Roaming will be available inside the cloud, so any TCP session, a video streaming or even a SIP call can be done while moving around.
+=========================
+Tutto è automatico, auto-magico e trasparente per l'utente finale.
+=========================
+
+image::img/network2.png[align="center"]
+
+
+== Nel dettaglio
+
+The WiFi Access Points of the same cloud share some parameters:
+
+* SSID, the WiFi AP identification name
+* A special anycast.footnote:[IP shared by multiple devices in the network] IPv4 and IPv6 addresses 
+* A special anycast MAC address
+* DHCP/RA server to provide valid IPs from the cloud to the clients.
+
+So a client attach to an AP can move around the mesh without the need to renew their IP configuration.
+Even the MAC layer will be the same under their point of view.
+
+image::img/network3.png[align="center"]
+
+
+[NOTE]
+======================
+The DHCP leases file is shared among the cloud to prevent collisions using
+link:http://en.wiki.guifi.net/wiki/A.L.F.R.E.D.[A.L.F.R.E.D.]
+
+As long as all nodes share the same anycast MAC/IP, from the client point of view it is fully transparent. 
+Thus the gateway is always the same nonetheless the mesh node where they are attached to is different.
+======================
+
+
+image::img/network4.png[align="center"]
+
+When a client wants to go out from the LAN (cloud) to reach the Internet or any other network.
+It will send the packets to the special anycast gateway address. So the node where the client
+is physically attached will take care of it.
+
+[NOTE]
+==============
+An ebtables.footnote:[something like iptables but for network layer 2] rule in the LAN/AP bridge prevents the layer 2 packets propagation in the cloud sent to the anycast address. So the mesh node where the client is associated gets the packet but not the others.
+==============
+
+image::img/network5.png[align="center"]
+
+The packet is routed through the BMX layer 3 network to the best Internet gateway. It may be a node from the same cloud or any other from another cloud far away.
+
+[NOTE]
+=============
+BMX has a powerful smart gateway functionality which automatically selects the best Internet gateway node taking into account the available bandwidth.
+=============
+
+image::img/network6.png[align="center"]
+
+[NOTE]
+=============
+In the way back the packet will arrive to some node in the cloud but it might not be the same node.
+Nevertheless the packet will be correctly delivered to the originator.
+This is because BMX smart gateway uses 1-way tunnels to ensure the selected gateway is used.
+=============
+
